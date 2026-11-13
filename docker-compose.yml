@@ -1,0 +1,63 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: instacart
+      POSTGRES_PASSWORD: instacart
+      POSTGRES_DB: instacart
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U instacart -d instacart"]
+      interval: 5s
+      retries: 20
+
+  airflow:
+    build: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: standalone
+    environment:
+      AIRFLOW_HOME: /opt/airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "false"
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://instacart:instacart@postgres:5432/instacart
+      DATABASE_URL: postgresql+psycopg2://instacart:instacart@postgres:5432/instacart
+      SAMPLE_USERS: ${SAMPLE_USERS:-1500}
+      PYTHONPATH: /opt/airflow/project
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./scripts:/opt/airflow/project/scripts
+      - ./agents:/opt/airflow/project/agents
+      - ./data:/opt/airflow/project/data
+      - ./outputs:/opt/airflow/project/outputs
+      - airflow_data:/opt/airflow
+
+  agents:
+    build:
+      context: .
+      dockerfile: agents/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg2://instacart:instacart@postgres:5432/instacart
+      PYTHONPATH: /app
+    ports:
+      - "8502:8501"
+    volumes:
+      - ./agents:/app/agents
+      - ./scripts:/app/scripts
+      - ./data:/app/data
+      - ./outputs:/app/outputs
+    command: sleep infinity
+
+volumes:
+  postgres_data:
+  airflow_data:
